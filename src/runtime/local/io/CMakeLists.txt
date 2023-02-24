@@ -14,5 +14,7 @@
 
 add_library(IO
         utils.cpp
+        MatrixMarket.c
+        MMAdapter.c
 )
 target_link_libraries(IO)
