@@ -48,5 +48,6 @@ TEMPLATE_PRODUCT_TEST_CASE("Import C Arrow", "[arrow]", (DenseMatrix), (double_t
   auto array = arrow::ImportArray(&data, &schema);
   CHECK(array.ok());
   auto arr = std::move(array).ValueOrDie();
+  std::cout << arr->ToString() << std::endl;
   CHECK(arr->length()==12);
 }
