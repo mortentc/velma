@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void ReleaseBase(struct ArrowSchema* schema){
+void ReleaseBaseType(struct ArrowSchema* schema){
     if(schema->name != NULL && schema->name[0]!=0)
         free(schema->name);
     schema->release = NULL;
@@ -18,10 +18,22 @@ void ReleaseFrameType(struct ArrowSchema* schema){
     schema->release = NULL;
 }
 
+void ReleaseBaseData(struct ArrowArray *data){
+    free(data->buffers);
+    data->release = NULL;
+}
+
 void ReleaseDenseData(struct ArrowArray *data){
     free((void *) data->buffers[1]);
     free(data->buffers);
-    data->release=NULL;
+    data->release = NULL;
+}
+
+void ReleaseFrameData(struct ArrowArray *data){
+    free((void*) data->buffers);
+    free((void*) data->children[0]);
+    free(data->children);
+    data->release = NULL;
 }
 
 void CreateDenseMatrix(const char *fname, struct ArrowSchema *type_info, struct ArrowArray *data){
@@ -42,7 +54,7 @@ void CreateDenseMatrix(const char *fname, struct ArrowSchema *type_info, struct 
         .n_children = 0,
         .children = NULL,
         .dictionary = NULL,
-        .release = &ReleaseBase
+        .release = &ReleaseBaseType
     };
 
     *data = (struct ArrowArray) {
@@ -75,7 +87,7 @@ void CreateFrame(const char *fname, struct ArrowSchema *type_info, struct ArrowA
     struct ArrowSchema *fields = (struct ArrowSchema*)malloc(col*sizeof(struct ArrowSchema));
 
     for(int i = 0; i<col; i++){
-        char field_name[2] = (char*)malloc(2);
+        char *field_name = (char*)malloc(2);
         sprintf(field_name, "%d", i);
         fields[i] = (struct ArrowSchema){
             .format = "g", //double
@@ -85,20 +97,9 @@ void CreateFrame(const char *fname, struct ArrowSchema *type_info, struct ArrowA
             .n_children = 0,
             .children = NULL,
             .dictionary = NULL,
-            .release = &ReleaseBase
+            .release = &ReleaseBaseType
         };
     };
-
-    // *column_schema = (struct ArrowSchema){
-    //     .format = "g", //double
-    //     .name = "",
-    //     .metadata = NULL,
-    //     .flags = 0,
-    //     .n_children = 0,
-    //     .children = NULL,
-    //     .dictionary = NULL,
-    //     .release = &ReleaseBase
-    // };
 
     *type_info = (struct ArrowSchema) {
         .format = "+s", //double
@@ -122,11 +123,13 @@ void CreateFrame(const char *fname, struct ArrowSchema *type_info, struct ArrowA
         .n_children = col,
         .children = (struct ArrowArray**)malloc(col*sizeof(struct ArrowArray*)),
         .dictionary = NULL,
-        .release = &ReleaseDenseData
+        .release = &ReleaseFrameData
     };
 
-    struct ArrowArray *contents = (struct ArrowArray*)malloc(col*sizeof(struct 
-    ArrowArray));
+    data->buffers = (const void**) malloc(sizeof(void*));
+    data->buffers[0] = NULL;
+
+    struct ArrowArray *contents = (struct ArrowArray*)malloc(col*sizeof(struct ArrowArray));
 
     for(int i = 0; i<col; i++){
         contents[i] = (struct ArrowArray){
@@ -135,14 +138,13 @@ void CreateFrame(const char *fname, struct ArrowSchema *type_info, struct ArrowA
             .null_count = 0,
             .n_buffers = 2,
             .n_children = 0,
+            .buffers = (const void**) malloc(2*sizeof(void*)),
             .children = NULL,
             .dictionary = NULL,
-            .release = &ReleaseDenseData
+            .release = &ReleaseBaseData
         };
-    }
-
-    data->buffers = (const void**) malloc(2 * sizeof(void*));
-    data->buffers[0] = NULL;
-    data->buffers[1] = val;
-
+        contents[i].buffers[0] = NULL;
+        contents[i].buffers[1] = val+i*row;
+        data->children[i] = contents+i;
+    };
 }
