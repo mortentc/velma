@@ -16,6 +16,7 @@
 
 #include <runtime/local/datastructures/DataObjectFactory.h>
 #include <runtime/local/datastructures/DenseMatrix.h>
+#include <runtime/local/datastructures/Frame.h>
 #include <runtime/local/io/ArrowMM.h>
 extern "C" {
 #include <runtime/local/io/MMAdapter.h>
@@ -41,12 +42,25 @@ TEMPLATE_PRODUCT_TEST_CASE("Buffer from MM", "[arrow]", (DenseMatrix), (int32_t)
   CHECK(arr->Equals(exp_buf,12));
 }
 
-TEMPLATE_PRODUCT_TEST_CASE("Import C Arrow", "[arrow]", (DenseMatrix), (double_t)) {
+TEMPLATE_PRODUCT_TEST_CASE("Import C Arrow as Dense", "[arrow]", (DenseMatrix), (double_t)) {
   struct ArrowSchema schema;
   struct ArrowArray data;
   CreateDenseMatrix("./test/runtime/local/io/dense_crd.mtx", &schema, &data);
   auto array = arrow::ImportArray(&data, &schema);
   CHECK(array.ok());
   auto arr = std::move(array).ValueOrDie();
+  std::cout << arr->ToString() << std::endl;
   CHECK(arr->length()==12);
+}
+
+TEMPLATE_PRODUCT_TEST_CASE("Import C Arrow as Frame", "[arrow]", (DenseMatrix), (double_t)) {
+  struct ArrowSchema schema;
+  struct ArrowArray data;
+  CreateFrame("./test/runtime/local/io/dense_crd.mtx", &schema, &data);
+  auto array = arrow::ImportRecordBatch(&data, &schema);
+  CHECK(array.ok());
+  auto arr = std::move(array).ValueOrDie();
+  std::cout << arr->ToString() << std::endl;
+  for(int i=0; i<arr->num_columns(); i++)
+    std::cout << arr->column_name(i) << std::endl;
 }
