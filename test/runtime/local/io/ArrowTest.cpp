@@ -61,6 +61,4 @@ TEMPLATE_PRODUCT_TEST_CASE("Import C Arrow as Frame", "[arrow]", (DenseMatrix), 
   CHECK(array.ok());
   auto arr = std::move(array).ValueOrDie();
   std::cout << arr->ToString() << std::endl;
-  for(int i=0; i<arr->num_columns(); i++)
-    std::cout << arr->column_name(i) << std::endl;
 }

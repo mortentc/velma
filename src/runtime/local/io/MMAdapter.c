@@ -47,7 +47,7 @@ void CreateDenseMatrix(const char *fname, struct ArrowSchema *type_info, struct 
     free(ys);
 
     *type_info = (struct ArrowSchema) {
-        .format = "g",
+        .format = "g", //double
         .name = "",
         .metadata = NULL,
         .flags = 0,
@@ -72,6 +72,21 @@ void CreateDenseMatrix(const char *fname, struct ArrowSchema *type_info, struct 
     data->buffers[0] = NULL;
     data->buffers[1] = val;
 
+}
+
+void CreateCSRMatrix(const char *fname, struct ArrowSchema *type_info, struct ArrayData *data){
+    struct ArrowSchema *child = (struct ArrowSchema*)malloc(sizeof(struct ArrowSchema));
+
+    *child = (struct ArrowSchema){
+        .format = "g", //double
+        .name = "",
+        .metadata = NULL,
+        .flags = 0,
+        .n_children = 0,
+        .children = NULL,
+        .dictionary = NULL,
+        .release = &ReleaseBaseType
+    };
 }
 
 void CreateFrame(const char *fname, struct ArrowSchema *type_info, struct ArrowArray *data){
