@@ -49,8 +49,18 @@ TEMPLATE_PRODUCT_TEST_CASE("Import C Arrow as Dense", "[arrow]", (DenseMatrix), 
   auto array = arrow::ImportArray(&data, &schema);
   CHECK(array.ok());
   auto arr = std::move(array).ValueOrDie();
-  std::cout << arr->ToString() << std::endl;
+  // std::cout << arr->ToString() << std::endl;
   CHECK(arr->length()==12);
+}
+
+TEMPLATE_PRODUCT_TEST_CASE("Import C Arrow as CSR", "[arrowcsr]", (DenseMatrix), (double_t)) {
+  struct ArrowSchema schema;
+  struct ArrowArray data;
+  CreateCSRMatrix("./test/runtime/local/io/dense_crd.mtx", &schema, &data);
+  auto array = arrow::ImportArray(&data, &schema);
+  CHECK(array.ok());
+  auto arr = std::move(array).ValueOrDie();
+  std::cout << arr->ToString() << std::endl;
 }
 
 TEMPLATE_PRODUCT_TEST_CASE("Import C Arrow as Frame", "[arrow]", (DenseMatrix), (double_t)) {
@@ -60,5 +70,5 @@ TEMPLATE_PRODUCT_TEST_CASE("Import C Arrow as Frame", "[arrow]", (DenseMatrix), 
   auto array = arrow::ImportRecordBatch(&data, &schema);
   CHECK(array.ok());
   auto arr = std::move(array).ValueOrDie();
-  std::cout << arr->ToString() << std::endl;
+  // std::cout << arr->ToString() << std::endl;
 }

@@ -21,6 +21,7 @@ struct ArrowSchema {
   // Opaque producer-specific data
   void* private_data;
 };
+typedef struct ArrowSchema Schema;
 
 struct ArrowArray {
   // Array data description
@@ -38,5 +39,5 @@ struct ArrowArray {
   // Opaque producer-specific data
   void* private_data;
 };
-
+typedef struct ArrowArray Array;
 #endif  // ARROW_C_DATA_INTERFACE

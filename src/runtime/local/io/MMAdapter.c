@@ -4,13 +4,23 @@
 #include <stdlib.h>
 #include <string.h>
 
-void ReleaseBaseType(struct ArrowSchema* schema){
-    if(schema->name != NULL && schema->name[0]!=0)
-        free(schema->name);
+
+
+void ReleaseBaseType(Schema *schema){
     schema->release = NULL;
 }
 
-void ReleaseFrameType(struct ArrowSchema* schema){
+void ReleaseNamedType(Schema *schema){
+    if(schema->name != NULL && schema->name[0]!=0)
+        free((void*)schema->name);
+    schema->release = NULL;
+}
+
+// void ReleaseCSRType(Schema *schema){
+//     free(schema->children[0])
+// }
+
+void ReleaseFrameType(Schema *schema){
     for(int i = 0; i<schema->n_children; i++)
         schema->children[i]->release(schema->children[i]);
     free(schema->children[0]);
@@ -18,25 +28,34 @@ void ReleaseFrameType(struct ArrowSchema* schema){
     schema->release = NULL;
 }
 
-void ReleaseBaseData(struct ArrowArray *data){
+void ReleaseBaseData(Array *data){
     free(data->buffers);
     data->release = NULL;
 }
 
-void ReleaseDenseData(struct ArrowArray *data){
+void ReleaseDenseData(Array *data){
     free((void *) data->buffers[1]);
     free(data->buffers);
     data->release = NULL;
 }
 
-void ReleaseFrameData(struct ArrowArray *data){
+void ReleaseCSRData(Array *data){
+    for(int i = 0; i<data->n_children; i++)
+        data->children[i]->release(data->children[i]);
+    free(data->children);
+    free((void*)data->buffers[0]);
+    free(data->buffers);
+    data->release=NULL;
+}
+
+void ReleaseFrameData(Array *data){
     free((void*) data->buffers);
     free((void*) data->children[0]);
     free(data->children);
     data->release = NULL;
 }
 
-void CreateDenseMatrix(const char *fname, struct ArrowSchema *type_info, struct ArrowArray *data){
+void CreateDenseMatrix(const char *fname, Schema *type_info, Array *data){
     int row, col, nz, *xs, *ys;
     double *val;
     MM_typecode code;
@@ -46,7 +65,7 @@ void CreateDenseMatrix(const char *fname, struct ArrowSchema *type_info, struct 
     free(xs);
     free(ys);
 
-    *type_info = (struct ArrowSchema) {
+    *type_info = (Schema) {
         .format = "g", //double
         .name = "",
         .metadata = NULL,
@@ -57,7 +76,7 @@ void CreateDenseMatrix(const char *fname, struct ArrowSchema *type_info, struct 
         .release = &ReleaseBaseType
     };
 
-    *data = (struct ArrowArray) {
+    *data = (Array) {
         .length = nz,
         .offset = 0,
         .null_count = 0,
@@ -74,10 +93,44 @@ void CreateDenseMatrix(const char *fname, struct ArrowSchema *type_info, struct 
 
 }
 
-void CreateCSRMatrix(const char *fname, struct ArrowSchema *type_info, struct ArrayData *data){
-    struct ArrowSchema *child = (struct ArrowSchema*)malloc(sizeof(struct ArrowSchema));
+void CreateCSRMatrix(const char *fname, Schema *type_info, Array *data){
 
-    *child = (struct ArrowSchema){
+    int row, col, nz, *rs, *cs;
+    double *val;
+    MM_typecode code;
+
+    mm_read_mtx_crd(fname, &row, &col, &nz, &rs, &cs, &val, &code);
+
+    // sort val,rs and cs based on col_idx in cs (ascending)
+
+    // stable sort val,rs and cs based on row_idx in rs (ascending)
+
+    // val and cs can now be element 0 and 1 in the resulting array.
+
+    // create element 2 by [0] + [count(i, rs) | 0<=i<row]
+    int64_t *row_ids = (int64_t*)malloc((row+1)*sizeof(int64_t));
+    for(int i = 0; i<=row; i++) row_ids[i] = 0;
+    for(int i = 0; i<nz; i++) row_ids[rs[i]+1]++;
+
+    // create and arrow object of type
+    // DenseUnion<List<UInt64>, FixedSizeList<VT>[nz]>
+    // OR DenseUnion<List<UInt64>, List<VT>>
+
+    Schema *eles = (Schema*)malloc(sizeof(Schema)*4);
+    Schema
+    *vt = eles+3,
+    *ui = eles+2,
+    *fsl = eles+1,
+    *lui = eles;
+
+    Schema **ptrs = (Schema**)malloc(sizeof(Schema*)*4);
+
+    ptrs[3] = vt;
+    ptrs[2] = ui;
+    ptrs[1] = fsl;
+    ptrs[0] = lui;
+
+    *vt = (Schema){
         .format = "g", //double
         .name = "",
         .metadata = NULL,
@@ -87,9 +140,161 @@ void CreateCSRMatrix(const char *fname, struct ArrowSchema *type_info, struct Ar
         .dictionary = NULL,
         .release = &ReleaseBaseType
     };
+
+    *fsl = (Schema){
+        .format = "+l", //list (variable)
+        .name = "values",
+        .metadata = NULL,
+        .flags = 0,
+        .n_children = 1,
+        .children = ptrs+3,
+        .dictionary = NULL,
+        .release = &ReleaseBaseType
+    };
+
+    *ui = (Schema){
+        .format = "L", //uint64
+        .name = "",
+        .metadata = NULL,
+        .flags = 0,
+        .n_children = 0,
+        .children = NULL,
+        .dictionary = NULL,
+        .release = &ReleaseBaseType
+    };
+
+    *lui = (Schema){
+        .format = "+l", //list (variable)
+        .name = "indices",
+        .metadata = NULL,
+        .flags = 0,
+        .n_children = 1,
+        .children = ptrs+2,
+        .dictionary = NULL,
+        .release = &ReleaseBaseType
+    };
+
+    *type_info = (Schema){
+        .format = "+ud:0,1", //DenseUnion<List,List>
+        .name = "",
+        .metadata = NULL,
+        .flags = 0,
+        .n_children = 2,
+        .children = ptrs,
+        .dictionary = NULL,
+        .release = &ReleaseFrameType
+    };
+
+    Array *children = (Array*)malloc(4*sizeof(Array));
+    Array
+    *child0 = children,
+    *child1 = children+1,
+    *child0child = children+2,
+    *child1child = children+3;
+
+    uint64_t *indices = (uint64_t*)malloc(sizeof(uint64_t)*(row+1+nz));
+    memcpy(row_ids, indices, sizeof(uint64_t)*(row+1));
+    memcpy(cs, indices+row+1, sizeof(uint64_t)*nz);
+
+    int32_t *offset_buffer = (int32_t*)malloc(sizeof(int32_t)*3);
+    offset_buffer[0] = 0;
+    offset_buffer[1] = row+1;
+    offset_buffer[2] = row+1+nz;
+
+    *child0child = (Array){
+        .length = row+1+nz,
+        .null_count = 0,
+        .n_buffers = 2,
+        .buffers = (const void**)malloc(2*sizeof(void*)),
+        .n_children = 0,
+        .children = NULL,
+        .dictionary = NULL,
+        .release = &ReleaseBaseData
+    };
+    child0child->buffers[0] = NULL;
+    child0child->buffers[1] = indices;
+
+    *child0 = (Array){
+        .length=2,
+        .null_count = 0,
+        .n_buffers = 2,
+        .buffers = (const void**)malloc(2*sizeof(void*)),
+        .n_children = 1,
+        .children = malloc(sizeof(Array*)),//&child0child,
+        .dictionary = NULL,
+        .release = &ReleaseBaseData
+    };
+
+    child0->buffers[0] = NULL;
+    child0->buffers[1] = offset_buffer;
+    child0->children[0] = child0child;
+
+    *child1child = (Array){
+        .length = nz,
+        .null_count = 0,
+        .n_buffers = 2,
+        .buffers = (const void**)malloc(2*sizeof(void*)),
+        .n_children = 0,
+        .children = NULL,
+        .dictionary = NULL,
+        .release = &ReleaseBaseData
+    };
+
+    child1child->buffers[0] = NULL;
+    child1child->buffers[1] = val;
+
+    *child1 = (Array){
+        .length = 1,
+        .null_count = 0,
+        .n_buffers = 2,
+        .buffers = (const void**)malloc(2*sizeof(void*)),
+        .n_children = 1,
+        .children = malloc(sizeof(Array*)),//&child1child,
+        .dictionary = NULL,
+        .release = &ReleaseBaseData 
+    };
+
+    int32_t *offset_buffer1 = (int32_t*)malloc(sizeof(int32_t)*2);
+    offset_buffer1[0] = 0;
+    offset_buffer1[1] = nz;
+
+    child1->buffers[0] = NULL;
+    child1->buffers[1] = offset_buffer1;
+    child1->children[0] = child1child;
+    // child1->buffers[2] = val;
+
+    int8_t *types = malloc(3*sizeof(int8_t)+3*sizeof(int32_t));
+    //set types of first 2 elements to id 0, third element id 1
+    types[0] = 0;
+    types[1] = 0;
+    types[2] = 1;
+
+    int32_t *offsets = (int32_t*)types+3;
+    offsets[0] = 0;
+    offsets[1] = 1;
+    offsets[2] = 0;
+
+    const void **arr_bufs = malloc(2*sizeof(void*));
+    arr_bufs[0] = (void*)types;
+    arr_bufs[1] = (void*)offsets;
+
+    *data = (Array){
+        .length = 3,
+        .null_count = 0,
+        .offset = 0,
+        .n_buffers = 2,
+        .buffers = arr_bufs,
+        .n_children = 2,
+        .children = (Array**)malloc(sizeof(Array*)*2),
+        .dictionary = NULL,
+        .release = &ReleaseCSRData
+    };
+
+    data->children[0]=child0;
+    data->children[1]=child1;
 }
 
-void CreateFrame(const char *fname, struct ArrowSchema *type_info, struct ArrowArray *data){
+void CreateFrame(const char *fname, Schema *type_info, Array *data){
     int row, col, nz, *xs, *ys;
     double *val;
     MM_typecode code;
@@ -99,12 +304,12 @@ void CreateFrame(const char *fname, struct ArrowSchema *type_info, struct ArrowA
     free(xs);
     free(ys);
 
-    struct ArrowSchema *fields = (struct ArrowSchema*)malloc(col*sizeof(struct ArrowSchema));
+    Schema *fields = (Schema*)malloc(col*sizeof(Schema));
 
     for(int i = 0; i<col; i++){
         char *field_name = (char*)malloc(2);
         sprintf(field_name, "%d", i);
-        fields[i] = (struct ArrowSchema){
+        fields[i] = (Schema){
             .format = "g", //double
             .name = field_name,
             .metadata = NULL,
@@ -112,17 +317,17 @@ void CreateFrame(const char *fname, struct ArrowSchema *type_info, struct ArrowA
             .n_children = 0,
             .children = NULL,
             .dictionary = NULL,
-            .release = &ReleaseBaseType
+            .release = &ReleaseNamedType
         };
     };
 
-    *type_info = (struct ArrowSchema) {
+    *type_info = (Schema) {
         .format = "+s", //double
         .name = "",
         .metadata = NULL,
         .flags = 0,
         .n_children = col,
-        .children = (struct ArrowSchema**) malloc(col * sizeof(struct ArrowSchema*)),
+        .children = (Schema**) malloc(col * sizeof(Schema*)),
         .dictionary = NULL,
         .release = &ReleaseFrameType
     };
@@ -130,13 +335,13 @@ void CreateFrame(const char *fname, struct ArrowSchema *type_info, struct ArrowA
     for(int i = 0; i<col; i++)
         type_info->children[i] = fields+i;
 
-    *data = (struct ArrowArray) {
+    *data = (Array) {
         .length = nz,
         .offset = 0,
         .null_count = 0,
         .n_buffers = 1,
         .n_children = col,
-        .children = (struct ArrowArray**)malloc(col*sizeof(struct ArrowArray*)),
+        .children = (Array**)malloc(col*sizeof(Array*)),
         .dictionary = NULL,
         .release = &ReleaseFrameData
     };
@@ -144,10 +349,10 @@ void CreateFrame(const char *fname, struct ArrowSchema *type_info, struct ArrowA
     data->buffers = (const void**) malloc(sizeof(void*));
     data->buffers[0] = NULL;
 
-    struct ArrowArray *contents = (struct ArrowArray*)malloc(col*sizeof(struct ArrowArray));
+    Array *contents = (Array*)malloc(col*sizeof(Array));
 
     for(int i = 0; i<col; i++){
-        contents[i] = (struct ArrowArray){
+        contents[i] = (Array){
             .length = row,
             .offset = 0,
             .null_count = 0,

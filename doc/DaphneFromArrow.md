@@ -47,6 +47,8 @@ struct ArrowArray {
 
 The `ArrowSchema` struct is responsible for describing the type of content of the `ArrowArray`. This is primarily done using the `format`-string field, by using letters to encode type information according to [this](https://arrow.apache.org/docs/format/CDataInterface.html#data-type-description-format-strings) table. The possible encodings corresponds to the logical types described in the [Arrow Columnar Format](https://arrow.apache.org/docs/format/Columnar.html#physical-memory-layout). This format also describes the necessary information the `ArrowArray` should provide, in addition to the raw data values.
 
+The `buffers` of the `ArrowArray` contain not only the data of the array, but also information like validity bitmaps and offsets. The `buffers` must be structured based on the type of the array, according to [this table](https://arrow.apache.org/docs/format/Columnar.html#buffer-listing-for-each-layout).
+
 Additionally, both structs need a [callback procedure](https://arrow.apache.org/docs/format/CDataInterface.html#memory-management) to release any `malloc`'ed buffers, as the data is transferred via `memcpy` on the C++ side, so memory on the C side will have to be freed after the transfer is completed. The callback procedure should set the `release` of a struct to `NULL` once the release is complete.
 
 ## Arrow objects representing Daphne objects
@@ -57,7 +59,9 @@ The `DenseMatrix` of Daphne is the simplest structure, and simply corresponds to
 TBD
 
 ### Frame
-The Daphne `Frame` type logically corresponds to Arrows [`Record Batch`](https://arrow.apache.org/docs/cpp/tables.html#record-batches). A `Record Batch` is a two-dimensional dataset, where a `Schema` consisting of list of `Fields`, associates a name and a type with each column of the dataset. Take care not to confuse `ArrowSchema` and `Schema`, as they serve very different purposes. The `ArrowSchema` is specific to C and is used to describe *any* Arrow type. The `Schema` is only used for describing the names and types of columns in an Arrow `Table` or `Record Batch`.
+The Daphne `Frame` type logically corresponds to Arrows [`Record Batch`](https://arrow.apache.org/docs/cpp/tables.html#record-batches). A `Record Batch` is a two-dimensional dataset, where a `Schema` consisting of list of `Fields`, associates a name and a type with each column of the dataset. ![](https://arrow.apache.org/docs/_images/tables-versus-record-batches.svg)
+
+Take care not to confuse `ArrowSchema` and `Schema`, as they serve very different purposes. The `ArrowSchema` is specific to C and is used to describe *any* Arrow type. The `Schema` is only used for describing the names and types of columns in an Arrow `Table` or `Record Batch`.
 
 `Record Batches` are not one of the logical types described by the columnar format, but it corresponds to a [`Struct`-array](https://arrow.apache.org/docs/format/Columnar.html#struct-layout), with the type of the array being `Struct<column1_type, column2_type, ..., columnN_type>`. Viewed logically, each element of the `Struct`-array corresponds to a row in the `Record Batch`, but physically, the values of each column is stored together in the same child array. The layout of the `ArrowArray` in C must match this specification, so each column have to be its own `ArrowArray`, and must be stored as a `child` in the base structure.
 

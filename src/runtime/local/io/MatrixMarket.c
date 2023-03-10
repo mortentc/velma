@@ -329,7 +329,7 @@ int mm_read_mtx_crd_entry(FILE *f, int *I, int *J,
                             (nz pairs of real/imaginary values)
 ************************************************************************/
 
-int mm_read_mtx_crd(char *fname, int *M, int *N, int *nz, int **I, int **J, 
+int mm_read_mtx_crd(const char *fname, int *M, int *N, int *nz, int **I, int **J, 
         double **val, MM_typecode *matcode)
 {
     int ret_code;
@@ -452,15 +452,15 @@ char *mm_strdup(const char *s)
 char  *mm_typecode_to_str(MM_typecode matcode)
 {
     char buffer[MM_MAX_LINE_LENGTH];
-    char *types[4];
+    const char *types[4];
 	char *mm_strdup(const char *);
-    int error =0;
+    //int error =0;
 
     /* check for MTX type */
     if (mm_is_matrix(matcode)) 
         types[0] = MM_MTX_STR;
     else
-        error=1;
+        //error=1;
 
     /* check for CRD or ARR matrix */
     if (mm_is_sparse(matcode))
