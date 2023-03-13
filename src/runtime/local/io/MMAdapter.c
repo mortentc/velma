@@ -93,6 +93,44 @@ void CreateDenseMatrix(const char *fname, Schema *type_info, Array *data){
 
 }
 
+void SortCSRElements(int **_rows, int **_cols, double **_vals, int num){
+    int *rows = *_rows;
+    int *cols = *_cols;
+    double *vals = *_vals;
+    int *ids = (int*)malloc(sizeof(int)*num);
+    for(int i = 0; i<num; i++) ids[i] = i;
+    // TODO: Replace sorting with something more efficient than selection sort.
+    for(int i = 0; i<num; i++){
+        int best_idx = i;
+        for(int j = i+1; j<num; j++)
+            if(rows[j] < rows[best_idx] || (rows[j]==rows[best_idx] && cols[j] < cols[best_idx])){
+                printf("Swapping\n");
+                best_idx = j;
+            }
+        int temp = ids[best_idx];
+        ids[best_idx] = ids[i];
+        ids[i] = temp;
+    }
+    // Rest is independant of sorting implementation.
+    int *dest = (int*)malloc((sizeof(int)*2+sizeof(double))*num);
+    int *row_dest = dest, *col_dest = dest+num;
+    double *val_dest = (double*)(dest+2*num);
+
+    for(int i = 0; i<num; i++){
+        int src = ids[i];
+        row_dest[i] = rows[src];
+        col_dest[i] = cols[src];
+        val_dest[i] = vals[src];
+    }
+
+    free((void*)*_rows);
+    free((void*)*_cols);
+    free((void*)*_vals);
+    *_rows = row_dest;
+    *_cols = col_dest;
+    *_vals = val_dest;
+}
+
 void CreateCSRMatrix(const char *fname, Schema *type_info, Array *data){
 
     int row, col, nz, *rs, *cs;
@@ -100,17 +138,14 @@ void CreateCSRMatrix(const char *fname, Schema *type_info, Array *data){
     MM_typecode code;
 
     mm_read_mtx_crd(fname, &row, &col, &nz, &rs, &cs, &val, &code);
-
-    // sort val,rs and cs based on col_idx in cs (ascending)
-
-    // stable sort val,rs and cs based on row_idx in rs (ascending)
-
+    // sort val,rs and cs based on row_idx in rs first, then col_idx in cs (ascending)
+    SortCSRElements(&rs, &cs, &val, nz);
     // val and cs can now be element 0 and 1 in the resulting array.
-
     // create element 2 by [0] + [count(i, rs) | 0<=i<row]
-    int64_t *row_ids = (int64_t*)malloc((row+1)*sizeof(int64_t));
+    int *row_ids = (int*)malloc((row+1)*sizeof(int));
     for(int i = 0; i<=row; i++) row_ids[i] = 0;
-    for(int i = 0; i<nz; i++) row_ids[rs[i]+1]++;
+    for(int i = 0; i<nz; i++) row_ids[rs[i]]++;
+    for(int i = 1; i<=row; i++) row_ids[i] += row_ids[i-1];
 
     // create and arrow object of type
     // DenseUnion<List<UInt64>, FixedSizeList<VT>[nz]>
@@ -153,7 +188,7 @@ void CreateCSRMatrix(const char *fname, Schema *type_info, Array *data){
     };
 
     *ui = (Schema){
-        .format = "L", //uint64
+        .format = "i", //int32 "L", //uint64
         .name = "",
         .metadata = NULL,
         .flags = 0,
@@ -192,9 +227,9 @@ void CreateCSRMatrix(const char *fname, Schema *type_info, Array *data){
     *child0child = children+2,
     *child1child = children+3;
 
-    uint64_t *indices = (uint64_t*)malloc(sizeof(uint64_t)*(row+1+nz));
-    memcpy(row_ids, indices, sizeof(uint64_t)*(row+1));
-    memcpy(cs, indices+row+1, sizeof(uint64_t)*nz);
+    int *indices = (int*)malloc(sizeof(int)*(row+1+nz));
+    memcpy(indices, row_ids, sizeof(int)*(row+1));
+    memcpy(indices+row+1, cs, sizeof(int)*nz);
 
     int32_t *offset_buffer = (int32_t*)malloc(sizeof(int32_t)*3);
     offset_buffer[0] = 0;
