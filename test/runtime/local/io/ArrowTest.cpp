@@ -53,7 +53,7 @@ TEMPLATE_PRODUCT_TEST_CASE("Import C Arrow as Dense", "[arrow]", (DenseMatrix), 
   CHECK(arr->length()==12);
 }
 
-TEMPLATE_PRODUCT_TEST_CASE("Import C Arrow as CSR", "[arrowcsr]", (DenseMatrix), (double_t)) {
+TEMPLATE_PRODUCT_TEST_CASE("Import C Arrow as CSR", "[arrow]", (DenseMatrix), (double_t)) {
   struct ArrowSchema schema;
   struct ArrowArray data;
   CreateCSRMatrix("./test/runtime/local/io/dense_crd.mtx", &schema, &data);

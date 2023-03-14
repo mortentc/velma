@@ -102,11 +102,11 @@ void SortCSRElements(int **_rows, int **_cols, double **_vals, int num){
     // TODO: Replace sorting with something more efficient than selection sort.
     for(int i = 0; i<num; i++){
         int best_idx = i;
-        for(int j = i+1; j<num; j++)
-            if(rows[j] < rows[best_idx] || (rows[j]==rows[best_idx] && cols[j] < cols[best_idx])){
-                printf("Swapping\n");
+        for(int j = i+1; j<num; j++){
+            int _j = ids[j], _best = ids[best_idx];
+            if(rows[_j] < rows[_best] || (rows[_j]==rows[_best] && cols[_j] < cols[_best]))
                 best_idx = j;
-            }
+        }
         int temp = ids[best_idx];
         ids[best_idx] = ids[i];
         ids[i] = temp;
