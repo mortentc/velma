@@ -56,7 +56,14 @@ Additionally, both structs need a [callback procedure](https://arrow.apache.org/
 The `DenseMatrix` of Daphne is the simplest structure, and simply corresponds to an Arrow [Array](https://arrow.apache.org/docs/cpp/api/array.html) with a [fixed-size primitive layout](https://arrow.apache.org/docs/format/Columnar.html#fixed-size-primitive-layout). To create such an object, invoke [`ImportArray`](https://arrow.apache.org/docs/cpp/api/c_abi.html#_CPPv411ImportArrayP10ArrowArrayP11ArrowSchema), where the `format` of the `ArrowSchema` is set to the letter corresponding to the value type of the `DenseMatrix`.
 
 ### CSRMatrix
-TBD
+The `CSRMatrix` does not have an obviously equivalent Arrow structure, as the matrix contains two additional arrays of meta-data. This meta-data does not easily fit into any of the relevant Arrow fields, so we instead choose to treat it the same as the regular data. For that purpose, modelling a `CSRMatrix` can be done using a `Union`-type to mix the value data with the index data.
+
+Using an object of type `DenseUnion<indices: List<uint64>, values: List<VT>>` of exactly 3 elements, we can include column indices and row offsets as the `indices`-type, and the actual matrix elements as a single instance of the `values`-type.
+
+The Arrow object is imported using the same `ImportArray` as for the `DenseMatrix`, but the `ArrowSchema` is a nested structure with three levels. At the top level, a single schema with format `"+ud:0,1"` is used. It has two children, each with format `"+l"` to indicate a list-type. Each child also has its own child, indicating the element type of the list (so `"L"` for the indices, and the relevant character for the value type).
+
+The buffers of the union array must consist of type ids and element offsets.
+The format-string `"ud:0,1"` means that 0 is the type id of the first type (indices), and 1 is the id of the second type (values). If the layout of the `CSRMatrix` is structured as: `[row_offsets; col_ids; vals]`, the buffers should be `[0;0;1]` for the type ids, and `[0;1;0]` for the element offsets. The actual values for the indices and the matrix elements are stored as child arrays, using the [variable-size list layout](https://arrow.apache.org/docs/format/Columnar.html#variable-size-list-layout).
 
 ### Frame
 The Daphne `Frame` type logically corresponds to Arrows [`Record Batch`](https://arrow.apache.org/docs/cpp/tables.html#record-batches). A `Record Batch` is a two-dimensional dataset, where a `Schema` consisting of list of `Fields`, associates a name and a type with each column of the dataset. ![](https://arrow.apache.org/docs/_images/tables-versus-record-batches.svg)
