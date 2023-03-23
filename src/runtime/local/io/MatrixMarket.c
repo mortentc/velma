@@ -262,30 +262,30 @@ int mm_write_mtx_array_size(FILE *f, int M, int N)
 /******************************************************************/
 
 int mm_read_mtx_crd_data(FILE *f, int M, int N, int nz, int I[], int J[],
-        double val[], MM_typecode matcode)
+        void *val, MM_typecode matcode)
 {
     int i;
-    if (mm_is_complex(matcode))
+    if (mm_is_integer(matcode))
     {
+        int *v = (int*) val;
         for (i=0; i<nz; i++)
-            if (fscanf(f, "%d %d %lg %lg", &I[i], &J[i], &val[2*i], &val[2*i+1])
-                != 4) return MM_PREMATURE_EOF;
+            if (fscanf(f, "%d %d %d", &I[i], &J[i], v+i) != 3)
+                return MM_PREMATURE_EOF;
     }
     else if (mm_is_real(matcode))
     {
+        double *v = (double*) val;
         for (i=0; i<nz; i++)
-        {
-            if (fscanf(f, "%d %d %lg\n", &I[i], &J[i], &val[i])
-                != 3) return MM_PREMATURE_EOF;
+            if (fscanf(f, "%d %d %lg\n", &I[i], &J[i], v+i) != 3)
+                return MM_PREMATURE_EOF;
 
-        }
     }
 
     else if (mm_is_pattern(matcode))
     {
         for (i=0; i<nz; i++)
-            if (fscanf(f, "%d %d", &I[i], &J[i])
-                != 2) return MM_PREMATURE_EOF;
+            if (fscanf(f, "%d %d", &I[i], &J[i]) != 2)
+                return MM_PREMATURE_EOF;
     }
     else
         return MM_UNSUPPORTED_TYPE;
@@ -330,7 +330,7 @@ int mm_read_mtx_crd_entry(FILE *f, int *I, int *J,
 ************************************************************************/
 
 int mm_read_mtx_crd(const char *fname, int *M, int *N, int *nz, int **I, int **J, 
-        double **val, MM_typecode *matcode)
+        void **val, MM_typecode *matcode)
 {
     int ret_code;
     FILE *f;
@@ -354,16 +354,16 @@ int mm_read_mtx_crd(const char *fname, int *M, int *N, int *nz, int **I, int **J
     *J = (int *)  malloc(*nz * sizeof(int));
     *val = NULL;
 
-    if (mm_is_complex(*matcode))
+    if (mm_is_integer(*matcode))
     {
-        *val = (double *) malloc(*nz * 2 * sizeof(double));
+        *val = malloc(*nz * sizeof(int));
         ret_code = mm_read_mtx_crd_data(f, *M, *N, *nz, *I, *J, *val, 
                 *matcode);
         if (ret_code != 0) return ret_code;
     }
     else if (mm_is_real(*matcode))
     {
-        *val = (double *) malloc(*nz * sizeof(double));
+        *val = malloc(*nz * sizeof(double));
         ret_code = mm_read_mtx_crd_data(f, *M, *N, *nz, *I, *J, *val, 
                 *matcode);
         if (ret_code != 0) return ret_code;

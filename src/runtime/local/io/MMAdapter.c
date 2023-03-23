@@ -4,7 +4,29 @@
 #include <stdlib.h>
 #include <string.h>
 
+const char* TypeCodeToArrow(MM_typecode type){
+    switch (type[2])
+    {
+    case 'R': //real to float64
+        return "g";
+    case 'P': //pattern to boolean
+        return "b";
+    default:  //default to int32
+        return "i";
+    }
+};
 
+int SizeofTypeCode(MM_typecode type){
+    switch (type[2])
+    {
+    case 'R': //real to float64
+        return 8;
+    case 'P': //pattern to boolean
+        return 1;
+    default:  //default to int32
+        return 4;
+    }
+}
 
 void ReleaseBaseType(Schema *schema){
     schema->release = NULL;
@@ -57,7 +79,7 @@ void ReleaseFrameData(Array *data){
 
 void CreateDenseMatrix(const char *fname, Schema *type_info, Array *data){
     int row, col, nz, *xs, *ys;
-    double *val;
+    void *val;
     MM_typecode code;
 
     mm_read_mtx_crd(fname, &row, &col, &nz, &xs, &ys, &val, &code);
@@ -66,7 +88,7 @@ void CreateDenseMatrix(const char *fname, Schema *type_info, Array *data){
     free(ys);
 
     *type_info = (Schema) {
-        .format = "g", //double
+        .format = TypeCodeToArrow(code),
         .name = "",
         .metadata = NULL,
         .flags = 0,
@@ -93,10 +115,10 @@ void CreateDenseMatrix(const char *fname, Schema *type_info, Array *data){
 
 }
 
-void SortCSRElements(int **_rows, int **_cols, double **_vals, int num){
-    int *rows = *_rows;
-    int *cols = *_cols;
-    double *vals = *_vals;
+void SortCSRElements(int **rows, int **cols, void **vals, int num, int size){
+    int *_rows = *rows;
+    int *_cols = *cols;
+    void *_vals = *vals;
     int *ids = (int*)malloc(sizeof(int)*num);
     for(int i = 0; i<num; i++) ids[i] = i;
     // TODO: Replace sorting with something more efficient than selection sort.
@@ -104,42 +126,43 @@ void SortCSRElements(int **_rows, int **_cols, double **_vals, int num){
         int best_idx = i;
         for(int j = i+1; j<num; j++){
             int _j = ids[j], _best = ids[best_idx];
-            if(rows[_j] < rows[_best] || (rows[_j]==rows[_best] && cols[_j] < cols[_best]))
+            if(_rows[_j] < _rows[_best] || (_rows[_j]==_rows[_best] && _cols[_j] < _cols[_best]))
                 best_idx = j;
         }
         int temp = ids[best_idx];
         ids[best_idx] = ids[i];
         ids[i] = temp;
     }
-    // Rest is independant of sorting implementation.
-    int *dest = (int*)malloc((sizeof(int)*2+sizeof(double))*num);
+    // Rest is independent of sorting implementation.
+    int *dest = (int*)malloc((sizeof(int)*2+size)*num);
     int *row_dest = dest, *col_dest = dest+num;
-    double *val_dest = (double*)(dest+2*num);
+    void *val_dest = (void*)(dest+2*num);
 
     for(int i = 0; i<num; i++){
         int src = ids[i];
-        row_dest[i] = rows[src];
-        col_dest[i] = cols[src];
-        val_dest[i] = vals[src];
+        row_dest[i] = _rows[src];
+        col_dest[i] = _cols[src];
+        memcpy(val_dest+i*size, _vals+src*size, size);
+        //val_dest[i] = _vals[src];
     }
 
-    free((void*)*_rows);
-    free((void*)*_cols);
-    free((void*)*_vals);
-    *_rows = row_dest;
-    *_cols = col_dest;
-    *_vals = val_dest;
+    free((void*)*rows);
+    free((void*)*cols);
+    free((void*)*vals);
+    *rows = row_dest;
+    *cols = col_dest;
+    *vals = val_dest;
 }
 
 void CreateCSRMatrix(const char *fname, Schema *type_info, Array *data){
 
     int row, col, nz, *rs, *cs;
-    double *val;
+    void *val;
     MM_typecode code;
 
     mm_read_mtx_crd(fname, &row, &col, &nz, &rs, &cs, &val, &code);
     // sort val,rs and cs based on row_idx in rs first, then col_idx in cs (ascending)
-    SortCSRElements(&rs, &cs, &val, nz);
+    SortCSRElements(&rs, &cs, &val, nz, SizeofTypeCode(code));
     // val and cs can now be element 0 and 1 in the resulting array.
     // create element 2 by [0] + [count(i, rs) | 0<=i<row]
     int *row_ids = (int*)malloc((row+1)*sizeof(int));
@@ -166,7 +189,7 @@ void CreateCSRMatrix(const char *fname, Schema *type_info, Array *data){
     ptrs[0] = lui;
 
     *vt = (Schema){
-        .format = "g", //double
+        .format = TypeCodeToArrow(code),
         .name = "",
         .metadata = NULL,
         .flags = 0,
@@ -331,7 +354,7 @@ void CreateCSRMatrix(const char *fname, Schema *type_info, Array *data){
 
 void CreateFrame(const char *fname, Schema *type_info, Array *data){
     int row, col, nz, *xs, *ys;
-    double *val;
+    void *val;
     MM_typecode code;
 
     mm_read_mtx_crd(fname, &row, &col, &nz, &xs, &ys, &val, &code);
@@ -345,7 +368,7 @@ void CreateFrame(const char *fname, Schema *type_info, Array *data){
         char *field_name = (char*)malloc(2);
         sprintf(field_name, "%d", i);
         fields[i] = (Schema){
-            .format = "g", //double
+            .format = TypeCodeToArrow(code),
             .name = field_name,
             .metadata = NULL,
             .flags = 0,
@@ -357,7 +380,7 @@ void CreateFrame(const char *fname, Schema *type_info, Array *data){
     };
 
     *type_info = (Schema) {
-        .format = "+s", //double
+        .format = "+s",
         .name = "",
         .metadata = NULL,
         .flags = 0,
