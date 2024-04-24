@@ -1,7 +1,7 @@
 # Using C Programs to Import Files as Arrow Objects
 In case you are restricted to using C for constructing Arrow objects (as is the case for computational storage),
 the Arrow object has designed a [data interface](https://arrow.apache.org/docs/format/CDataInterface.html) for such a case. The data interface consists of two C structs, `ArrowSchema` and `ArrowArray`, which can be passed to Arrows C++ code and [imported](https://arrow.apache.org/docs/cpp/api/c_abi.html) to create equivalent Arrow Arrays or RecordBatches.
-```
+```C
 #ifndef ARROW_C_DATA_INTERFACE
 #define ARROW_C_DATA_INTERFACE
 
